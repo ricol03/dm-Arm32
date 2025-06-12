@@ -2,8 +2,10 @@
 DEBUG ?= yes
 UNICODE ?= yes
 MSYS_PATH ?= C:/MinGW/msys/1.0
-OPENSSL_INC_DIR ?= C:/DiscordMessenger/openssl/include
-OPENSSL_LIB_DIR ?= C:/DiscordMessenger/openssl
+OPENSSL_INC_DIR ?= libs/openssl-arm/include
+OPENSSL_LIB_DIR ?= libs/openssl-arm/
+
+CXX = /home/ricol03/toolchains/llvm-mingw-20250528-ucrt-ubuntu-22.04-x86_64/bin/armv7-w64-mingw32-g++
 
 # Print info
 $(info Discord Messenger makefile)
@@ -26,9 +28,9 @@ SRC_DIR = src
 TARGET = $(BIN_DIR)/DiscordMessenger.exe
 
 # Location of certain utilities.  Because Win32 takes over if you don't
-MKDIR = $(MSYS_PATH)/bin/mkdir.exe
-FIND  = $(MSYS_PATH)/bin/find.exe
-WR = windres
+MKDIR = mkdir
+FIND  = find
+WR = /home/ricol03/toolchains/llvm-mingw-20250528-ucrt-ubuntu-22.04-x86_64/bin/armv7-w64-mingw32-windres
 
 INC_DIRS = \
 	$(USER_INC_DIRS) \
@@ -45,6 +47,7 @@ DEFINES = \
 	-DWINVER=$(WINVER)            \
 	-D_WIN32_WINNT=$(WINVER)      \
 	-D_WIN32_IE=$(WIN32IE)        \
+	-D__USE_W32_SOCKETS           \
 	-DASIO_STANDALONE             \
 	-DASIO_DISABLE_IOCP           \
 	-DASIO_HAS_THREADS            \
@@ -88,9 +91,6 @@ CXXFLAGS = \
 	$(DEFINES)     \
 	-MMD           \
 	-std=c++11     \
-	-mno-mmx       \
-	-mno-sse       \
-	-mno-sse2      \
 	$(UNICODE_DEF) \
 	$(DEBUG_DEF)
 
@@ -106,7 +106,9 @@ LDFLAGS = \
 	-lole32     \
 	-lcrypt32   \
 	-lcrypto    \
-	-lssl
+	-lssl \
+	-static-libstdc++
+	#-static-libunwind
 
 WRFLAGS = \
 	-Ihacks

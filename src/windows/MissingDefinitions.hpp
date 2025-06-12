@@ -69,7 +69,7 @@
 #define LVGA_FOOTER_CENTER  0x00000010
 #define LVGA_FOOTER_RIGHT   0x00000020
 
-typedef struct tagLVGROUP
+/*typedef struct tagLVGROUP
 {
 	UINT    cbSize;
 	UINT    mask;
@@ -101,7 +101,7 @@ typedef struct tagLVGROUP
 	UINT    cchSubsetTitle;
 
 #endif
-} LVGROUP, *PLVGROUP;
+} LVGROUP, *PLVGROUP;*/
 
 #ifndef NIF_REALTIME
 #define NIF_REALTIME 0x40
