@@ -5,7 +5,7 @@ MSYS_PATH ?= C:/MinGW/msys/1.0
 OPENSSL_INC_DIR ?= libs/openssl-arm/include
 OPENSSL_LIB_DIR ?= libs/openssl-arm/
 
-CXX = /home/ricol03/toolchains/llvm-mingw-20250528-ucrt-ubuntu-22.04-x86_64/bin/armv7-w64-mingw32-g++
+CXX = (path to your toolchain)/bin/armv7-w64-mingw32-g++
 
 # Print info
 $(info Discord Messenger makefile)
@@ -30,7 +30,7 @@ TARGET = $(BIN_DIR)/DiscordMessenger.exe
 # Location of certain utilities.  Because Win32 takes over if you don't
 MKDIR = mkdir
 FIND  = find
-WR = /home/ricol03/toolchains/llvm-mingw-20250528-ucrt-ubuntu-22.04-x86_64/bin/armv7-w64-mingw32-windres
+WR = (path to your toolchain)/bin/armv7-w64-mingw32-windres
 
 INC_DIRS = \
 	$(USER_INC_DIRS) \
@@ -106,9 +106,8 @@ LDFLAGS = \
 	-lole32     \
 	-lcrypt32   \
 	-lcrypto    \
-	-lssl \
+	-lssl       \
 	-static-libstdc++
-	#-static-libunwind
 
 WRFLAGS = \
 	-Ihacks

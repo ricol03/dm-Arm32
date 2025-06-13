@@ -1,8 +1,10 @@
-# Discord Messenger for Windows
+# Discord Messenger for Windows ARM32
 
 Discord Messenger is a messenger application designed to be compatible with Discord, while being
 backwards compatible with down to Windows 2000 (although support for even older versions has been
 attempted).
+
+This is a port made specifically for WoA32 (Windows on ARM32). The code is nearly identical to its x86 counterpart, although some assembly parts sections commented out, for obvious reasons. Supported Windows 10 build 15035 (Windows RT 8.0 and RT 8.1 are untested as of 13/06/2025).
 
 Its motto: *It's time to ditch MSN and Yahoo.*
 
@@ -26,20 +28,18 @@ A Discord server about this client can be joined here: https://discord.gg/cEDjgD
 
 ## Screenshots
 
-![Windows 2000 screenshot](doc/ss_2000.png)
-![Windows XP screenshot](doc/ss_xp.png)
+![Windows 10 screenshot 1](doc/ss_10-1.png)
+![Windows 10 screenshot 2](doc/ss_10-2.png)
 
 ## Minimum System Requirements
 
-- Windows NT 3.1, Windows 95, or newer (MinGW version)
-
-- Windows XP SP2 or newer (MSVC version)
-
-- 486 CPU (MinGW version) Pentium 4 CPU (MSVC version)
-
-- 64 MB of RAM, can do lower but might start to hit the page file
+- Should run on any ARM32 Windows device.
 
 ## Building
+
+I won't be explaining how you can build it necessarily, I ended up doing it on Linux with LLVM-MinGW. You can get the toolchain here: https://github.com/mstorsjo/llvm-mingw. Otherwise, change the Makefile as needed, and, theoretically, you should be good to go (run the `make` command).
+
+Here follows the original build process:
 
 Before you can start the build process, after cloning the project (You should NOT download it as
 ZIP, unless you know that you should also download the submodules individually and unzip them in
@@ -218,7 +218,7 @@ libstdc++-6.dll, and msvcrt.dll.
 
 ## Attributions
 
-Discord Messenger is powered by the following external libraries:
+Discord Messenger (arm32) is powered by the following external libraries:
 
 - [JSON for Modern C++](https://github.com/nlohmann/json)
 - [Boost](https://www.boost.org)
@@ -230,3 +230,9 @@ Discord Messenger is powered by the following external libraries:
 Although these libraries are vendored, you can replace them with the latest version, and the MSVC
 build will keep working.  Adjustments were made to certain libraries to make them compile on MinGW.
 See `doc/` for details.
+
+Also powered by:
+
+- [mstorsjo's arm32 MinGW toolchain](https://github.com/mstorsjo/llvm-mingw)
+- [iProgramMC's original Discord Messager](https://github.com/DiscordMessenger/dm)
+- You, for using my port :]
