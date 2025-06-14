@@ -4,7 +4,7 @@ Discord Messenger is a messenger application designed to be compatible with Disc
 backwards compatible with down to Windows 2000 (although support for even older versions has been
 attempted).
 
-This is a port made specifically for WoA32 (Windows on ARM32). The code is nearly identical to its x86 counterpart, although some assembly parts sections commented out, for obvious reasons. Supported Windows 10 build 15035 (Windows RT 8.0 and RT 8.1 are untested as of 13/06/2025).
+This is a port made specifically for WoA32 (Windows on ARM32). The code is nearly identical to its x86 counterpart, although some assembly parts sections commented out, for obvious reasons. Supported Windows 10 build 15035 (Windows RT 8.0 is untested as of 13/06/2025).
 
 Its motto: *It's time to ditch MSN and Yahoo.*
 
