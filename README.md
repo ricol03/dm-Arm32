@@ -37,7 +37,7 @@ A Discord server about this client can be joined here: https://discord.gg/cEDjgD
 
 ![Windows RT 8.1 screenshot](doc/ss_rt8_1.png)
 
-Special thanks for Brunintech for the testing and screenshot!
+Special thanks to Brunintech for the testing and screenshot!
 
 ## Minimum System Requirements
 
