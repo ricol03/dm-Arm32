@@ -28,8 +28,16 @@ A Discord server about this client can be joined here: https://discord.gg/cEDjgD
 
 ## Screenshots
 
+#### Windows 10 build 15035
+
 ![Windows 10 screenshot 1](doc/ss_10-1.png)
 ![Windows 10 screenshot 2](doc/ss_10-2.png)
+
+#### Windows RT 8.1
+
+![Windows RT 8.1 screenshot](doc/ss_rt8_1.png)
+
+Special thanks for Brunintech for the testing and screenshot!
 
 ## Minimum System Requirements
 
