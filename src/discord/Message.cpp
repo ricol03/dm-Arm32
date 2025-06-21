@@ -101,9 +101,10 @@ void ReferenceMessage::Load(nlohmann::json& data, Snowflake guild)
 	
 	m_snowflake = messageId;
 	m_type = (MessageType::eType)GetFieldSafeInt(data, "type");
+	m_timestamp = ParseTime(GetFieldSafe(data, "timestamp"));
 	m_message = GetFieldSafe(data, "content");
 	m_bHasAttachments = data["attachments"].is_array() && data["attachments"].size() > 0;
-	m_bHasComponents = data["embeds"].is_array() && data["embeds"].size() > 0;
+	m_bHasComponents = data["components"].is_array() && data["components"].size() > 0;
 	m_bHasEmbeds = data["embeds"].is_array() && data["embeds"].size() > 0;
 	m_bMentionsAuthor = false;
 
@@ -245,8 +246,12 @@ void Message::Load(Json& data, Snowflake guild)
 	if (member.is_object() && guild)
 		authorId = GetDiscordInstance()->ParseGuildMember(guild, member, authorId);
 
-	if (data.contains("nonce"))
-		m_anchor = GetIntFromString(data["nonce"]);
+	if (data.contains("nonce")) {
+		if (data["nonce"].is_number())
+			m_anchor = (Snowflake)data["nonce"];
+		else if (data["nonce"].is_string())
+			m_anchor = GetIntFromString(data["nonce"]);
+	}
 
 	m_snowflake = messageId;
 	m_author_snowflake = authorId;
@@ -291,25 +296,93 @@ void Message::Load(Json& data, Snowflake guild)
 
 	if (!msgRef.is_null())
 	{
-		m_pReferencedMessage = std::make_shared<ReferenceMessage>();
-		ReferenceMessage& rMsg = *m_pReferencedMessage;
-
-		if (msgRef["guild_id"].is_null())
-			m_refMessageGuild = guild;
-		else
+		int type = GetFieldSafeInt(msgRef, "type");
+		if (msgRef["guild_id"].is_null()) {
+			if (type == 1) // is forward?
+				m_refMessageGuild = 0;
+			else // maybe a pin or something
+				m_refMessageGuild = guild;
+		}
+		else {
 			m_refMessageGuild = GetSnowflake(msgRef, "guild_id");
+		}
 
 		assert(!msgRef["channel_id"].is_null());
 
-		m_refMessageChannel   = GetSnowflake(msgRef, "channel_id");
+		m_refMessageChannel = GetSnowflake(msgRef, "channel_id");
 		m_refMessageSnowflake = GetSnowflake(msgRef, "message_id");
 
-		if (!refdMsg.is_null()) {
-			rMsg.Load(refdMsg, guild);
-		}
-		else {
-			rMsg.m_author = "Original message was deleted.";
+		m_pReferencedMessage = std::make_shared<ReferenceMessage>();
+		ReferenceMessage& rMsg = *m_pReferencedMessage;
+
+		if (type == 1)
+		{
+			// Forwarded Message
+			Json& msgShots = data["message_snapshots"];
+			if (!msgShots.is_array() || msgShots.size() == 0) {
+				DbgPrintF("Message snapshots is not an array or its size is zero!!");
+				return;
+			}
+
+			m_bIsForward = true;
+
+			Json& msgShot = msgShots[0]["message"];
+
+			rMsg.m_snowflake = m_refMessageSnowflake;
 			rMsg.m_author_snowflake = 0;
+			rMsg.m_author = "---";
+			rMsg.m_avatar = "";
+			rMsg.m_webhook_id = 0;
+
+			rMsg.m_bHasAttachments = msgShot.contains("attachments") && msgShot["attachments"].is_array() && !msgShot["attachments"].empty();
+			rMsg.m_bHasEmbeds = msgShot.contains("embeds") && msgShot["embeds"].is_array() && !msgShot["embeds"].empty();
+			rMsg.m_message = GetFieldSafe(msgShot, "content");
+			rMsg.m_timestamp = ParseTime(GetFieldSafe(msgShot, "timestamp"));
+
+			if (msgShot["mentions"].is_array())
+			{
+				for (auto& ment : msgShot["mentions"])
+				{
+					Snowflake id = GetSnowflake(ment, "id");
+					std::string avatar = GetFieldSafe(ment, "avatar");
+					std::string globName = GetGlobalName(ment);
+					std::string userName = GetUsername(ment);
+					Profile* pf = GetProfileCache()->LoadProfile(id, ment);
+					rMsg.m_userMentions.insert(id);
+				}
+			}
+
+			// TODO: This sucks, but I'll allow it for now.
+			if (msgShot["attachments"].is_array())
+			{
+				for (auto& attd : msgShot["attachments"])
+				{
+					Attachment att;
+					att.Load(attd);
+					m_attachments.push_back(att);
+				}
+			}
+
+			if (msgShot["embeds"].is_array())
+			{
+				for (auto& attd : msgShot["embeds"])
+				{
+					RichEmbed emb;
+					emb.Load(attd);
+					m_embeds.push_back(emb);
+				}
+			}
+
+		}
+		else
+		{
+			if (!refdMsg.is_null()) {
+				rMsg.Load(refdMsg, guild);
+			}
+			else {
+				rMsg.m_author = "Original message was deleted.";
+				rMsg.m_author_snowflake = 0;
+			}
 		}
 	}
 

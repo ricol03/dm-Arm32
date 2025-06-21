@@ -118,6 +118,8 @@ bool ProfilePopout::Layout(HWND hWnd, SIZE& fullSize)
 	rcAboutMe.right -= groupBoxBorder * 2 + ScaleByDPI(20);
 	DrawText2(hdc, bio, -1, &rcAboutMe, editControlFlags);
 
+	rcAboutMe.bottom = std::min(rcAboutMe.bottom, rcAboutMe.top + (LONG)ScaleByDPI(300));
+
 	rcMemberSinceGuild = rcMeasureTemplate;
 	rcMemberSinceGuild.right -= groupBoxBorder * 2 + joinedAtIconSize;
 	rcMemberSinceGuild.right /= 2;
@@ -541,6 +543,21 @@ INT_PTR CALLBACK ProfilePopout::Proc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 				m_hBitmap = NULL;
 			}
 			return TRUE;
+		}
+
+		case WM_CTLCOLOREDIT: // Windows NT 3.1 seems to send this intead of WM_CTLCOLORSTATIC for my disabled text boxes
+			// If the window is disabled, set the background color below
+			if (IsWindowEnabled((HWND)lParam))
+				break;
+
+			// fall through
+		case WM_CTLCOLOR:
+		case WM_CTLCOLORDLG:
+		case WM_CTLCOLORSTATIC:
+		case WM_CTLCOLORBTN: // Windows NT 3.1 seems to send this instead of WM_CTLCOLORSTATIC for my group boxes
+		{
+			SetBkColor((HDC) wParam, GetSysColor(COLOR_3DFACE));
+			return (INT_PTR)ri::GetSysColorBrush(COLOR_3DFACE);
 		}
 	}
 

@@ -14,6 +14,10 @@ extern HFONT* g_FntMdStyleArray[FONT_TYPE_COUNT];
 static int MdDetermineFontID(int styleFlags) {
 	if (styleFlags & (WORD_CODE | WORD_MLCODE))
 		return 8;
+	if (styleFlags & WORD_HEADER1)
+		return (styleFlags & WORD_ITALIC) ? 10 : 9;
+	if (styleFlags & WORD_HEADER2)
+		return (styleFlags & WORD_ITALIC) ? 12 : 11;
 
 	int index = 0;
 	if (styleFlags & WORD_STRONG) index |= 1;
@@ -80,12 +84,8 @@ int GetProfilePictureSize();
 int MdLineHeight(DrawingContext* context, int styleFlags)
 {
 	int fontId = MdDetermineFontID(styleFlags);
-	if (context->m_cachedHeights[fontId]) {
-		int result = context->m_cachedHeights[fontId];
-		if (styleFlags & WORD_HEADER1)
-			result = GetProfilePictureSize();
-		return result;
-	}
+	if (context->m_cachedHeights[fontId])
+		return context->m_cachedHeights[fontId];
 
 	HDC hdc = context->m_hdc;
 	HFONT font = MdGetFontByID(fontId);
@@ -94,8 +94,6 @@ int MdLineHeight(DrawingContext* context, int styleFlags)
 	GetTextMetrics(context->m_hdc, &tm);
 	SelectObject(hdc, old);
 	int ht = tm.tmHeight;
-	if (styleFlags & WORD_HEADER1)
-		ht *= 2;
 	context->m_cachedHeights[fontId] = ht;
 	return ht;
 }
@@ -142,6 +140,8 @@ void MdDrawString(DrawingContext* context, const Rect& rect, const String& str, 
 		}
 
 		int height = MdLineHeight(context, styleFlags);
+		if (styleFlags & WORD_HEADER1)
+			height = GetProfilePictureSize();
 
 		std::string nameRaw = "EMOJI_" + std::to_string(parsed);
 		std::string name = GetAvatarCache()->AddImagePlace(nameRaw, eImagePlace::EMOJIS, nameRaw, parsed, height);
@@ -236,6 +236,23 @@ void MdDrawCodeBackground(DrawingContext* context, const Rect& rect)
 	}
 
 	ri::DrawEdge(context->m_hdc, &rc, BDR_SUNKEN, BF_RECT);
+}
+
+void MdDrawForwardBackground(DrawingContext* context, const Rect& rect)
+{
+	RECT rc = RectToNative(rect);
+
+	rc.right = rc.left - ScaleByDPI(3);
+	rc.left = rc.right - ScaleByDPI(3);
+
+	if (context->m_bInvertTextColor) {
+		COLORREF old = ri::SetDCBrushColor(context->m_hdc, context->InvertIfNeeded(GetSysColor(COLOR_GRAYTEXT)));
+		FillRect(context->m_hdc, &rc, ri::GetDCBrush());
+		ri::SetDCBrushColor(context->m_hdc, old);
+	}
+	else {
+		FillRect(context->m_hdc, &rc, ri::GetSysColorBrush(COLOR_GRAYTEXT));
+	}
 }
 
 int MdGetQuoteIndentSize()

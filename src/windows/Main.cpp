@@ -32,6 +32,7 @@
 #include "../discord/UpdateChecker.hpp"
 
 #include <system_error>
+#include <shellapi.h>
 
 // proportions:
 int g_ProfilePictureSize;
@@ -260,6 +261,9 @@ void ProperlySizeControls(HWND hWnd)
 	g_MemberListWidth      = ScaleByDPI(MEMBER_LIST_WIDTH);
 	g_MessageEditorHeight  = ScaleByDPI(MESSAGE_EDITOR_HEIGHT);
 
+	if (g_pMessageEditor)
+		g_pMessageEditor->SetJumpPresentHeight(g_BottomBarHeight - g_MessageEditorHeight - scaled10);
+
 	int guildListerWidth = g_GuildListerWidth;
 	int channelViewListWidth = g_ChannelViewListWidth;
 	if (GetLocalSettings()->ShowScrollBarOnGuildList()) {
@@ -285,7 +289,7 @@ void ProperlySizeControls(HWND hWnd)
 			- scaled10 * 2 /* Between channelview and messageview, between messageview and memberlist */
 			- g_GuildListerWidth2; /* The guild list itself. So just the channelview, messageview and memberlist summed */
 
-		const int widthOfAll3ThingsAt800px = 694;
+		int widthOfAll3ThingsAt800px = ScaleByDPI(694);
 
 		g_ChannelViewListWidth2 = MulDiv(g_ChannelViewListWidth2, widthOfAll3Things, widthOfAll3ThingsAt800px);
 		g_MemberListWidth       = MulDiv(g_MemberListWidth,       widthOfAll3Things, widthOfAll3ThingsAt800px);
@@ -416,19 +420,41 @@ void UpdateMainWindowTitle(HWND hWnd)
 	free(tstr);
 }
 
-int OnSSLError(const std::string& url)
+int OnHTTPError(const std::string& url, const std::string& reasonString, bool isSSL)
 {
 	LPTSTR urlt = ConvertCppStringToTString(url);
+	LPTSTR rstt = ConvertCppStringToTString(reasonString);
+	LPCTSTR title;
 	static TCHAR buffer[8192];
-	_tcscpy(buffer, TmGetTString(IDS_SSL_ERROR_1));
-	_tcscat(buffer, urlt);
-	_tcscat(buffer, TmGetTString(IDS_SSL_ERROR_2));
-	_tcscat(buffer, TmGetTString(IDS_SSL_ERROR_3));
+
+	if (isSSL) {
+		title = TmGetTString(IDS_SSL_ERROR_TITLE);
+		_tcscpy(buffer, TmGetTString(IDS_SSL_ERROR_1));
+		_tcscat(buffer, urlt);
+		_tcscat(buffer, TEXT("\n\n"));
+		_tcscat(buffer, rstt);
+		_tcscat(buffer, TEXT("\n\n"));
+		_tcscat(buffer, TmGetTString(IDS_SSL_ERROR_2));
+		_tcscat(buffer, TEXT("\n\n"));
+		_tcscat(buffer, TmGetTString(IDS_SSL_ERROR_3));
+	}
+	else {
+		title = TmGetTString(IDS_CONNECT_ERROR_TITLE);
+		_tcscpy(buffer, TmGetTString(IDS_CONNECT_ERROR_1));
+		_tcscat(buffer, urlt);
+		_tcscat(buffer, TEXT("\n\n"));
+		_tcscat(buffer, rstt);
+		_tcscat(buffer, TEXT("\n\n"));
+		_tcscat(buffer, TmGetTString(IDS_CONNECT_ERROR_2));
+		_tcscat(buffer, TEXT("\n\n"));
+		_tcscat(buffer, TmGetTString(IDS_CONNECT_ERROR_3));
+	}
+
 	free(urlt);
-
+	free(rstt);
+	
 	size_t l = _tcslen(buffer);
-
-	return MessageBox(g_Hwnd, buffer, TmGetTString(IDS_SSL_ERROR_TITLE), MB_ABORTRETRYIGNORE | MB_ICONWARNING);
+	return MessageBox(g_Hwnd, buffer, title, (isSSL ? MB_ABORTRETRYIGNORE : MB_RETRYCANCEL) | MB_ICONWARNING);
 }
 
 void CloseCleanup(HWND hWnd)
@@ -461,6 +487,13 @@ LRESULT HandleCommand(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					return TRUE;
 				}
 			}
+			break;
+		}
+		case ID_FILE_RECONNECTTODISCORD:
+		{
+			if (!GetDiscordInstance()->IsGatewayConnected())
+				SendMessage(hWnd, WM_LOGINAGAIN, 0, 0);
+
 			break;
 		}
 		case ID_FILE_EXIT:
@@ -691,6 +724,8 @@ int g_agerCounter = 0;
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	KeepOverridingTheFilter();
+
 	g_agerCounter++;
 	if (g_agerCounter >= 50) {
 		g_agerCounter = 0;
@@ -718,9 +753,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				ProfilePopout::Update();
 			break;
 		}
-		case WM_SSLERROR:
+		case WM_HTTPERROR:
 		{
-			return OnSSLError(CutOutURLPath(std::string((const char*)lParam)));
+			const char** arr = (const char**) lParam;
+			return OnHTTPError(CutOutURLPath(std::string((const char*) arr[0])), std::string((const char*) arr[1]), (bool)wParam);
 		}
 		case WM_FORCERESTART:
 		{
@@ -821,7 +857,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 			GetDiscordInstance()->HandledChannelSwitch();
 
-			g_pMessageList->RefetchMessages();
+			g_pMessageList->RefetchMessages(g_pMessageList->GetMessageSentTo());
 
 			InvalidateRect(g_pMessageList->m_hwnd, NULL, MessageList::MayErase());
 			g_pGuildHeader->Update();
@@ -977,7 +1013,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 			if (g_pMessageList->GetCurrentChannel() == pParms->channel)
 			{
-				g_pMessageList->AddMessage(pParms->msg, GetForegroundWindow() == hWnd);
+				g_pMessageList->AddMessage(pParms->msg.m_snowflake, GetForegroundWindow() == hWnd);
 				OnStopTyping(pParms->channel, pParms->msg.m_author_snowflake);
 			}
 
@@ -999,7 +1035,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			GetMessageCache()->EditMessage(pParms->channel, pParms->msg);
 
 			if (g_pMessageList->GetCurrentChannel() == pParms->channel)
-				g_pMessageList->EditMessage(pParms->msg);
+				g_pMessageList->EditMessage(pParms->msg.m_snowflake);
 
 			break;
 		}
@@ -1160,6 +1196,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_CONNECTERROR:
 			// try it again
+			EnableMenuItem(GetSubMenu(GetMenu(hWnd), 0), ID_FILE_RECONNECTTODISCORD, MF_ENABLED);
 			DbgPrintW("Trying to connect to websocket again in %d ms", g_tryAgainTimerElapse);
 			TryConnectAgainIn(g_tryAgainTimerElapse);
 			g_tryAgainTimerElapse = g_tryAgainTimerElapse * 115 / 100;
@@ -1178,6 +1215,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			if (g_bFromStartup && GetLocalSettings()->GetStartMinimized()) {
 				GetFrontend()->HideWindow();
 			}
+
+			EnableMenuItem(GetSubMenu(GetMenu(hWnd), 0), ID_FILE_RECONNECTTODISCORD, MF_GRAYED);
 			break;
 		case WM_CONNECTING: {
 			if (!g_bFromStartup || !GetLocalSettings()->GetStartMinimized())
@@ -1206,6 +1245,13 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			AddOrRemoveAppFromStartup();
 			CloseCleanup(hWnd);
 			DestroyWindow(hWnd);
+			break;
+
+		case WM_SETBROWSINGPAST:
+			if (wParam)
+				g_pMessageEditor->StartBrowsingPast();
+			else
+				g_pMessageEditor->StopBrowsingPast();
 			break;
 
 		case WM_CLOSE:
@@ -1375,15 +1421,16 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 			time_t lastTime = g_pMessageList->GetLastSentMessageTime();
 			Profile* pf = GetDiscordInstance()->GetProfile();
-			Message m;
-			m.m_snowflake = psmap->m_snowflake;
-			m.m_author_snowflake = pf->m_snowflake;
-			m.m_author = pf->m_name;
-			m.m_message = psmap->m_message;
-			m.m_type = MessageType::SENDING_MESSAGE;
-			m.SetTime(time(NULL));
-			m.m_dateFull = "Sending...";
-			m.m_dateCompact = "Sending...";
+			MessagePtr m = MakeMessage();
+			m->m_snowflake = psmap->m_snowflake;
+			m->m_author_snowflake = pf->m_snowflake;
+			m->m_author = pf->m_name;
+			m->m_avatar = pf->m_avatarlnk;
+			m->m_message = psmap->m_message;
+			m->m_type = MessageType::SENDING_MESSAGE;
+			m->SetTime(time(NULL));
+			m->m_dateFull = "Sending...";
+			m->m_dateCompact = "Sending...";
 			g_pMessageList->AddMessage(m, true);
 			return 0;
 		}
@@ -1414,7 +1461,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				TmGetTString(IDS_PROGRAM_NAME),
 				MB_ICONERROR | MB_OK
 			);
-			PostQuitMessage(0);
+
+			EnableMenuItem(GetSubMenu(GetMenu(hWnd), 0), ID_FILE_RECONNECTTODISCORD, MF_ENABLED);
 			break;
 		}
 		case WM_SHOWPROFILEPOPOUT:
@@ -1512,17 +1560,72 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_IMAGESAVED:
 		{
+			LPCTSTR file = (LPCTSTR) lParam;
+			size_t sl = _tcslen(file);
+			bool isExe = false;
+
+			if (sl > 4 && (
+				_tcscmp(file + sl - 4, TEXT(".exe")) == 0 ||
+				_tcscmp(file + sl - 4, TEXT(".scr")) == 0 ||
+				_tcscmp(file + sl - 4, TEXT(".lnk")) == 0 ||
+				_tcscmp(file + sl - 4, TEXT(".zip")) == 0 ||
+				_tcscmp(file + sl - 4, TEXT(".rar")) == 0 ||
+				_tcscmp(file + sl - 4, TEXT(".7z"))  == 0)) {
+				isExe = true;
+			}
+
 			TCHAR buff[4096];
-			WAsnprintf(buff, _countof(buff), TmGetTString(IDS_SAVED_UPDATE), (LPCTSTR) lParam);
+			WAsnprintf(
+				buff,
+				_countof(buff),
+				isExe ? TmGetTString(IDS_SAVED_STRING_EXE) : TmGetTString(IDS_SAVED_UPDATE),
+				file
+			);
 			buff[_countof(buff) - 1] = 0;
 
 			// TODO: Probably should automatically extract and install it or something
-			MessageBox(
+			int res = MessageBox(
 				hWnd,
 				buff,
 				TmGetTString(IDS_PROGRAM_NAME),
-				MB_ICONINFORMATION | MB_OK
+				MB_ICONINFORMATION | MB_YESNO
 			);
+			
+			if (res == IDYES) {
+				ShellExecute(g_Hwnd, TEXT("open"), file, NULL, NULL, SW_SHOWNORMAL);
+			}
+
+			break;
+		}
+		case WM_UPDATEAVAILABLE:
+		{
+			std::string* msg = (std::string*) lParam;
+			auto& url = msg[0];
+			auto& version = msg[1];
+			
+			TCHAR buff[2048];
+			LPTSTR tstr1 = ConvertCppStringToTString(GetAppVersionString());
+			LPTSTR tstr2 = ConvertCppStringToTString(version);
+			WAsnprintf(buff, _countof(buff), TmGetTString(IDS_NEW_VERSION_AVAILABLE), tstr1, tstr2);
+			free(tstr1);
+			free(tstr2);
+
+			if (MessageBox(g_Hwnd, buff, TmGetTString(IDS_PROGRAM_NAME), MB_ICONINFORMATION | MB_YESNO) == IDYES)
+			{
+				size_t idx = 0, idxsave = 0;
+				for (; idx != url.size(); idx++) {
+					if (url[idx] == '/')
+						idxsave = idx + 1;
+				}
+
+				DownloadFileDialog(g_Hwnd, url, url.substr(idxsave));
+			}
+			else
+			{
+				GetLocalSettings()->StopUpdateCheckTemporarily();
+			}
+
+			delete[] msg;
 			break;
 		}
 		case WM_NOTIFMANAGERCALLBACK:
@@ -1550,7 +1653,11 @@ HFONT
 	g_FntMdBU,
 	g_FntMdIU,
 	g_FntMdBIU,
-	g_FntMdCode;
+	g_FntMdCode,
+	g_FntMdHdr,
+	g_FntMdHdr2,
+	g_FntMdHdrI,
+	g_FntMdHdrI2;
 
 HFONT* g_FntMdStyleArray[FONT_TYPE_COUNT] = {
 	&g_FntMd,   // 0
@@ -1561,7 +1668,11 @@ HFONT* g_FntMdStyleArray[FONT_TYPE_COUNT] = {
 	&g_FntMdBU, // 4|1
 	&g_FntMdIU, // 4|2
 	&g_FntMdBIU,// 4|2|1
-	&g_FntMdCode, // 9
+	&g_FntMdCode, // 8
+	&g_FntMdHdr,  // 9
+	&g_FntMdHdrI, // 10
+	&g_FntMdHdr2, // 11
+	&g_FntMdHdrI2,// 12
 };
 
 void InitializeFonts()
@@ -1574,8 +1685,8 @@ void InitializeFonts()
 
 	lf.lfHeight = ScaleByUser(lf.lfHeight);
 
-	HFONT hf, hfb, hfi, hfbi, hfu, hfbu, hfiu, hfbiu;
-	hf = hfb = hfi = hfbi = hfu = hfbu = hfiu = hfbiu = NULL;
+	HFONT hf, hfb, hfi, hfbi, hfu, hfbu, hfiu, hfbiu, hfbh, hfbh2, hfbih, hfbih2;
+	hf = hfb = hfi = hfbi = hfu = hfbu = hfiu = hfbiu = hfbh = hfbh2 = hfbih = hfbih2 = NULL;
 
 	if (haveFont)
 		hf = CreateFontIndirect(&lf);
@@ -1585,18 +1696,53 @@ void InitializeFonts()
 	}
 
 	if (haveFont) {
+		int h1 = -MulDiv(lf.lfHeight, 8, 3);
+		int h2 = MulDiv(h1, 4, 5);
+
+		// BOLD
 		lf.lfWeight = 700;
 		hfb = CreateFontIndirect(&lf);
+
+		// BOLD h1
+		int oldh = lf.lfHeight;
+		lf.lfHeight = h1;
+		hfbh = CreateFontIndirect(&lf);
+
+		// BOLD h2
+		lf.lfHeight = h2;
+		hfbh2 = CreateFontIndirect(&lf);
+		lf.lfHeight = oldh;
+
+		// BOLD ITALIC
 		lf.lfItalic = true;
 		hfbi = CreateFontIndirect(&lf);
+		
+		// BOLD ITALIC h1
+		lf.lfHeight = h1;
+		hfbih = CreateFontIndirect(&lf);
+
+		// BOLD ITALIC h2
+		lf.lfHeight = h2;
+		hfbih2 = CreateFontIndirect(&lf);
+		lf.lfHeight = oldh;
+
+		// BOLD ITALIC UNDERLINE
 		lf.lfUnderline = true;
 		hfbiu = CreateFontIndirect(&lf);
+
+		// BOLD UNDERLINE
 		lf.lfItalic = false;
 		hfbu = CreateFontIndirect(&lf);
+
+		// UNDERLINE
 		lf.lfWeight = oldWeight;
 		hfu = CreateFontIndirect(&lf);
+
+		// ITALIC UNDERLINE
 		lf.lfItalic = true;
 		hfiu = CreateFontIndirect(&lf);
+
+		// ITALIC
 		lf.lfUnderline = false;
 		hfi = CreateFontIndirect(&lf);
 		// lf.lfItalic = false; -- yes I want it italic
@@ -1606,13 +1752,17 @@ void InitializeFonts()
 		lf.lfHeight = oldSize;
 	}
 
-	if (!hfb)   hfb = hf;
-	if (!hfi)   hfi = hf;
-	if (!hfbi)  hfbi = hf;
-	if (!hfb)   hfb = hf;
-	if (!hfbu)  hfbu = hf;
-	if (!hfiu)  hfiu = hf;
-	if (!hfbiu) hfbiu = hf;
+	if (!hfb)    hfb = hf;
+	if (!hfi)    hfi = hf;
+	if (!hfbi)   hfbi = hf;
+	if (!hfb)    hfb = hf;
+	if (!hfbu)   hfbu = hf;
+	if (!hfiu)   hfiu = hf;
+	if (!hfbiu)  hfbiu = hf;
+	if (!hfbh)   hfbh = hf;
+	if (!hfbh2)  hfbh2 = hf;
+	if (!hfbih)  hfbih = hf;
+	if (!hfbih2) hfbih2 = hf;
 
 	g_FntMd = hf;
 	g_FntMdB = hfb;
@@ -1622,6 +1772,10 @@ void InitializeFonts()
 	g_FntMdBU = hfbu;
 	g_FntMdIU = hfiu;
 	g_FntMdBIU = hfbiu;
+	g_FntMdHdr = hfbh;
+	g_FntMdHdr2 = hfbh2;
+	g_FntMdHdrI = hfbih;
+	g_FntMdHdrI2 = hfbih2;
 
 	g_MessageTextFont = hf;
 	g_AuthorTextFont = hfb;
@@ -1713,7 +1867,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLin
 	ERR_load_crypto_strings();
 	LPCTSTR pClassName = TEXT("DiscordMessengerClass");
 
-
 	InitializeCOM(); // important because otherwise TTS/shell stuff might not work
 	InitCommonControls(); // actually a dummy but adds the needed reference to comctl32
 	// (see https://devblogs.microsoft.com/oldnewthing/20050718-16/?p=34913 )
@@ -1804,6 +1957,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLin
 
 	// Initialize the worker thread manager
 	GetHTTPClient()->Init();
+
+	// Initialize DPI
+	ForgetSystemDPI();
+	g_ProfilePictureSize = ScaleByDPI(PROFILE_PICTURE_SIZE_DEF);
 
 	// Create some fonts.
 	InitializeFonts();

@@ -221,12 +221,13 @@ class MessageItem
 private:
 	friend class MessageList;
 
-	Message m_msg;
+	MessagePtr m_msg;
 	RECT m_rect; // rectangle inside scrollHwnd
 	RECT m_authorRect{};
 	RECT m_messageRect{};
 	RECT m_avatarRect{};
 	RECT m_refAvatarRect{};
+	RECT m_refMsgRect{};
 	int m_height = 0;
 	int m_textHeight = 0;
 	int m_authHeight = 0;
@@ -297,13 +298,13 @@ public:
 
 		// Update pointers to the attachment data
 		for (size_t i = 0; i < m_attachmentData.size(); i++) {
-			ptrdiff_t offs = m_attachmentData[i].m_pAttachment - other.m_msg.m_attachments.data();
-			m_attachmentData[i].m_pAttachment = (m_msg.m_attachments.data() + offs);
+			ptrdiff_t offs = m_attachmentData[i].m_pAttachment - other.m_msg->m_attachments.data();
+			m_attachmentData[i].m_pAttachment = (m_msg->m_attachments.data() + offs);
 		}
 		// Update pointers to the embed data
 		for (size_t i = 0; i < m_embedData.size(); i++) {
-			ptrdiff_t offs = m_embedData[i].m_pEmbed - other.m_msg.m_embeds.data();
-			m_embedData[i].m_pEmbed = (m_msg.m_embeds.data() + offs);
+			ptrdiff_t offs = m_embedData[i].m_pEmbed - other.m_msg->m_embeds.data();
+			m_embedData[i].m_pEmbed = (m_msg->m_embeds.data() + offs);
 		}
 	}
 	MessageItem(MessageItem&& other) noexcept { // move
@@ -346,13 +347,13 @@ public:
 
 		// Update pointers to the attachment data
 		for (size_t i = 0; i < m_attachmentData.size(); i++) {
-			ptrdiff_t offs = m_attachmentData[i].m_pAttachment - other.m_msg.m_attachments.data();
-			m_attachmentData[i].m_pAttachment = (m_msg.m_attachments.data() + offs);
+			ptrdiff_t offs = m_attachmentData[i].m_pAttachment - other.m_msg->m_attachments.data();
+			m_attachmentData[i].m_pAttachment = (m_msg->m_attachments.data() + offs);
 		}
 		// Update pointers to the embed data
 		for (size_t i = 0; i < m_embedData.size(); i++) {
-			ptrdiff_t offs = m_embedData[i].m_pEmbed - other.m_msg.m_embeds.data();
-			m_embedData[i].m_pEmbed = (m_msg.m_embeds.data() + offs);
+			ptrdiff_t offs = m_embedData[i].m_pEmbed - other.m_msg->m_embeds.data();
+			m_embedData[i].m_pEmbed = (m_msg->m_embeds.data() + offs);
 		}
 	}
 	void ClearAttachmentDataRects() {
@@ -436,7 +437,8 @@ private:
 	void Scroll(int amount, RECT* rcClip = NULL, bool shiftAllRects = true);
 	
 	void MessageHeightChanged(int oldHeight, int newHeight, bool toStart = false);
-	void AddMessageInternal(const Message& msg, bool toStart, bool updateLastViewedMessage = false, bool resetAnchor = true);
+	void AddMessageInternal(Snowflake msgId, bool toStart, bool updateLastViewedMessage = false, bool resetAnchor = true);
+	void AddMessageInternal(MessagePtr msg, bool toStart, bool updateLastViewedMessage = false, bool resetAnchor = true);
 	void UpdateScrollBar(int addToHeight, int diffNow, bool toStart, bool update = true, int offsetY = 0, bool addingMessage = false);
 
 	void FlashMessage(Snowflake msg);
@@ -450,6 +452,7 @@ private:
 
 	std::list<MessageItem>::iterator FindMessageByPoint(POINT pt);
 	std::list<MessageItem>::iterator FindMessageByPointAuthorRect(POINT pt);
+	std::list<MessageItem>::iterator FindMessageByPointReplyRect(POINT pt);
 
 public:
 	COLORREF GetDarkerBackgroundColor() const;
@@ -475,6 +478,7 @@ public:
 		LPCTSTR strReplyMsg,
 		LPCTSTR strReplyAuth,
 		bool isAuthorBot,
+		bool isForward,
 		const RECT& msgRect,
 		int& height,
 		int& authheight,
@@ -486,13 +490,17 @@ public:
 		int placeinchain
 	);
 
-	void AddMessageStart(const Message& msg) {
-		AddMessageInternal(msg, true, false);
+	void AddMessageStart(Snowflake msgId) {
+		AddMessageInternal(msgId, true, false);
 	}
-	void AddMessage(const Message& msg, bool updateLastViewedMessage = false) {
-		AddMessageInternal(msg, false, updateLastViewedMessage);
+	void AddMessage(Snowflake msgId, bool updateLastViewedMessage = false) {
+		AddMessageInternal(msgId, false, updateLastViewedMessage);
 	}
-	void EditMessage(const Message& newMsg); // NOTE: the message HAS to have existed before!
+	void AddMessage(MessagePtr msgPtr, bool updateLastViewedMessage = false) {
+		AddMessageInternal(msgPtr, false, updateLastViewedMessage);
+	}
+
+	void EditMessage(Snowflake msgId); // NOTE: the message HAS to have existed before!
 	void DeleteMessage(Snowflake sf);
 	void SetLastViewedMessage(Snowflake sf, bool refreshItAlso);
 
@@ -523,11 +531,15 @@ public:
 
 	time_t GetLastSentMessageTime() const {
 		if (m_messages.empty()) return 0;
-		return m_messages.rbegin()->m_msg.m_dateTime;
+		return m_messages.rbegin()->m_msg->m_dateTime;
+	}
+
+	Snowflake GetMessageSentTo() const {
+		return m_messageSentTo;
 	}
 
 	void ProperlyResizeSubWindows();
-	int RecalcMessageSizes(bool update, int& repaintSize, Snowflake addedMessagesBeforeThisID);
+	int RecalcMessageSizes(bool update, int& repaintSize, Snowflake addedMessagesBeforeThisID, Snowflake addedMessagesAfterThisID);
 	void FullRecalcAndRepaint();
 	void OnUpdateAttachment(Snowflake sf);
 	void OnUpdateEmbed(const std::string& res);
@@ -536,7 +548,7 @@ public:
 	void OnFailedToSendMessage(Snowflake sf);
 	void UpdateMembers(std::set<Snowflake>& mems);
 	void UpdateBackgroundBrush();
-	bool SendToMessage(Snowflake sf, bool addGapIfNeeded = true);
+	bool SendToMessage(Snowflake sf, bool addGapIfNeeded = true, bool forceInvalidate = false);
 	void UpdateAllowDrop();
 	bool ShouldBeDateGap(time_t oldTime, time_t newTime);
 
@@ -554,9 +566,11 @@ public:
 protected:
 	friend class MessageItem;
 	static bool IsActionMessage(MessageType::eType msgType);
+	static bool IsReplyableActionMessage(MessageType::eType msgType); // is this an action message that one can reply to
 	static bool IsClientSideMessage(MessageType::eType msgType);
 
 private:
+	void HitTestReply(POINT pt, BOOL& hit);
 	void HitTestAuthor(POINT pt, BOOL& hit);
 	void HitTestAttachments(POINT pt, BOOL& hit);
 	void HitTestInteractables(POINT pt, BOOL& hit);
@@ -577,6 +591,7 @@ private:
 	void Paint(HDC hdc, RECT& rcPaint);
 
 	void RequestMarkRead();
+	void HandleRightClickMenuCommand(int command);
 
 	// [Left] [Author] [pinned] [a message](uid) [ to this channel.
 

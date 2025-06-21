@@ -18,7 +18,7 @@
 // ======== KNOWN ISSUES ========
 //
 // 1. Chinese characters don't get split up like regular DrawText does
-// 2. Arabic words render in reverse.  That should be fixed later.
+// 2. Arabic words render in reverse.  That should be fixed at some point.
 //
 
 #define CHAR_BEG_STRONG (char(0x01))
@@ -38,13 +38,17 @@
 #define CHAR_NOOP       (char(0x12)) // will be ignored in the final output
 #define CHAR_EVERYONE   (char(0x13))
 #define CHAR_HERE       (char(0x14))
-#define CHAR_ESCAPE_UNDERSCORE (char(0x15)) // _
-#define CHAR_ESCAPE_ASTERISK   (char(0x16)) // *
-#define CHAR_ESCAPE_BACKSLASH  (char(0x17)) // \.
-#define CHAR_ESCAPE_BACKTICK   (char(0x18)) // `
-#define CHAR_ESCAPE_POUND      (char(0x19)) // #
-#define CHAR_ESCAPE_MINUS      (char(0x1A)) // -
-#define CHAR_ESCAPE_PLUS       (char(0x1B)) // +
+#define CHAR_BEG_HEADER (char(0x15))
+#define CHAR_BEG_HDR2   (char(0x16))
+#define CHAR_ESCAPE_UNDERSCORE (char(0x17)) // _
+#define CHAR_ESCAPE_ASTERISK   (char(0x18)) // *
+#define CHAR_ESCAPE_BACKSLASH  (char(0x19)) // \.
+#define CHAR_ESCAPE_BACKTICK   (char(0x1A)) // `
+#define CHAR_ESCAPE_POUND      (char(0x1B)) // #
+#define CHAR_ESCAPE_MINUS      (char(0x1C)) // -
+#define CHAR_ESCAPE_PLUS       (char(0x1D)) // +
+#define CHAR_END_FORWARD (char(0x1E))
+#define CHAR_BEG_FORWARD (char(0x1F))
 
 int g_tokenTypeTable[] = {
 	0,
@@ -66,13 +70,16 @@ int g_tokenTypeTable[] = {
 	Token::QUOTE,
 	Token::LIST_ITEM,
 	0, // character means no op
+	0, // @everyone checked separately
+	0, // @here checked separately
+	Token::HEADER,
+	Token::HEADER2,
 };
 
 static REN::regex g_StrongMatch("(\\*){2}[^\\*\\r\\n].*?(\\*){2}");
 static REN::regex g_ItalicMatch("\\*[^\\*\\r\\n].*?\\*");
 static REN::regex g_UnderlMatch("(_){2}[^_\\r\\n].*?(_){2}");
 static REN::regex g_ItalieMatch("(?=[ \\_\\r\\n])_.*?_(?<=[ \\_\\r\\n])");
-static REN::regex g_QuoteMatch("^> .*?(\n|$)");
 
 // Basic Markdown syntax:
 //
@@ -84,9 +91,10 @@ static REN::regex g_QuoteMatch("^> .*?(\n|$)");
 // ~~something~~ - Strikethrough
 // `something` - Code display
 // ```<LF>something<LF>``` - Multi-line code display
+// http://something or https://something - Link
+// [Text](http://something) - Link
 //
 // Discord specific features:
-// http://something or https://something - Link
 // <@something> - Mention User
 // <#something> - Mention Channel
 // <@&something> - Mention Role
@@ -104,7 +112,7 @@ static REN::regex g_QuoteMatch("^> .*?(\n|$)");
 // - Tables
 // - Warning / Note stuff
 
-static void AddAndClearToken(std::vector<Token>& tokens, std::string& tok, int type)
+static void AddAndClearToken(std::vector<Token>& tokens, std::string& tok, int type, const std::string& alttext = "")
 {
 	if (tok.empty())
 		return;
@@ -130,7 +138,7 @@ static void AddAndClearToken(std::vector<Token>& tokens, std::string& tok, int t
 		}
 	}
 	
-	tokens.push_back(Token(type, tok));
+	tokens.push_back(Token(type, tok, alttext));
 	tok.clear();
 }
 
@@ -166,6 +174,15 @@ void FormattedText::Tokenize(const std::string& msg, const std::string& oldmsg)
 
 		switch (chr)
 		{
+			case CHAR_BEG_FORWARD:
+			case CHAR_END_FORWARD:
+			{
+				AddAndClearToken(tokens, current, Token::TEXT);
+				i++;
+				current += chr;
+				AddAndClearToken(tokens, current, chr == CHAR_END_FORWARD ? Token::FORWARDE : Token::FORWARD);
+				break;
+			}
 			case CHAR_ESCAPE_UNDERSCORE: chr = '_'; goto _def;
 			case CHAR_ESCAPE_ASTERISK:   chr = '*'; goto _def;
 			case CHAR_ESCAPE_BACKSLASH:  chr ='\\'; goto _def;
@@ -186,6 +203,8 @@ void FormattedText::Tokenize(const std::string& msg, const std::string& oldmsg)
 			case CHAR_END_CODE:
 			case CHAR_BEG_QUOTE:
 			case CHAR_BEG_LITEM:
+			case CHAR_BEG_HEADER:
+			case CHAR_BEG_HDR2:
 			{
 				// The line feed is a separator. It has nothing to do with formatting, however.
 				AddAndClearToken(tokens, current, Token::TEXT);
@@ -260,6 +279,60 @@ void FormattedText::Tokenize(const std::string& msg, const std::string& oldmsg)
 				AddAndClearToken(tokens, current, chr == CHAR_HERE ? Token::HERE : Token::EVERYONE);
 				i++;
 				break;
+			}
+			case '[':
+			{
+				size_t revertIndex = i;
+
+				int state = 0; // max: 5;   0 - alt text, 1 - "]", 2 - link, 3 - ")"
+				i++;
+				std::string altText = "", link = "";
+
+				bool isok = true;
+
+				for (; i < msgSize && isok && state < 3; i++)
+				{
+					switch (state) {
+						case 0:
+							if (!isalnum(msg[i]) && msg[i] != ' ' && msg[i] != ']')
+								isok = false;
+
+							if (msg[i] == ']')
+								state++;
+							else
+								altText += msg[i];
+							break;
+
+						case 1:
+							if (msg[i] == '(')
+								state++;
+							else if (msg[i] != ']')
+								isok = false;
+							break;
+
+						case 2:
+							if (strchr("\n ([]{}", msg[i]))
+								isok = false;
+
+							if (msg[i] == ')')
+								state++;
+							else
+								link += msg[i];
+							break;
+					}
+				}
+
+				if (state < 3)
+					isok = false;
+
+				if (isok)
+				{
+					AddAndClearToken(tokens, link, Token::LINK, altText);
+					break;
+				}
+
+				i = revertIndex;
+				goto _def;
 			}
 			case '<':
 			{
@@ -392,6 +465,10 @@ void FormattedText::ParseText()
 			case Token::ITALIE_END:   style &=~WORD_ITALIE;   break;
 			case Token::LIST_ITEM:    style |= WORD_LISTITEM; break;
 			case Token::QUOTE:        style |= WORD_QUOTE;    break;
+			case Token::FORWARD:      style |= WORD_FORWARD;  break;
+			case Token::FORWARDE:     style &=~WORD_FORWARD;  break;
+			case Token::HEADER:       style |= WORD_HEADER1;  break;
+			case Token::HEADER2:      style |= WORD_HEADER2;  break;
 			case Token::CODE: {
 				if (tk.m_text.empty()) {
 					AddWord(Word(style, "``````"));
@@ -430,7 +507,7 @@ void FormattedText::ParseText()
 				break;
 			}
 			case Token::NEWLINE: {
-				style &= ~(WORD_QUOTE | WORD_LISTITEM);
+				style &= ~(WORD_QUOTE | WORD_LISTITEM | WORD_HEADER1 | WORD_HEADER2);
 				AddWord(Word(style | WORD_NEWLINE, ""));
 				break;
 			}
@@ -442,10 +519,15 @@ void FormattedText::ParseText()
 				AddWord(Word(style | WORD_EVERYONE, "@here"));
 				break;
 			}
+			case Token::LINK: {
+				Word word(style | WORD_LINK, tk.m_text);
+				word.SetContentOverride(tk.m_alttext);
+				AddWord(word);
+				break;
+			}
 			default: {
 				int specificStyle = 0;
 				switch (tk.m_type) {
-					case Token::LINK:         specificStyle |= WORD_LINK;      break;
 					case Token::MENTION:      specificStyle |= WORD_MENTION;   break;
 					case Token::TIMESTAMP:    specificStyle |= WORD_TIMESTAMP; break;
 					case Token::CODE:         specificStyle |= WORD_MLCODE;    break;
@@ -612,11 +694,29 @@ void FormattedText::Draw(DrawingContext* context, int offsetY)
 		}
 	}
 
+	// draw forwarded message 
+	Rect fwextent(0x7FFFFFFF, 0x7FFFFFFF, 0, 0);
+	bool isForward = false;
+	for (auto& w : m_words)
+	{
+		if (w.m_rect.Width() != 0 && w.m_rect.Height() != 0 && (w.m_flags & WORD_FORWARD)) {
+			isForward = true;
+			fwextent.left = std::min(fwextent.left, w.m_rect.left);
+			fwextent.top = std::min(fwextent.top, w.m_rect.top + offsetY);
+			fwextent.right = std::max(fwextent.right, w.m_rect.right);
+			fwextent.bottom = std::max(fwextent.bottom, w.m_rect.bottom + offsetY);
+		}
+	}
+
+	if (isForward) {
+		MdDrawForwardBackground(context, fwextent);
+	}
+
 	for (auto& w : m_words)
 	{
 		if (w.m_flags & WORD_DONTDRAW)
 			continue;
-		
+
 		Rect rc = w.m_rect;
 		rc.top    += offsetY;
 		rc.bottom += offsetY;
@@ -694,6 +794,7 @@ void FormattedText::UseRegex(std::string& str)
 	const int HAS_QUOTE  = (1 << 2);
 	const int HAS_AT     = (1 << 3);
 	const int HAS_BSLASH = (1 << 4);
+	const int HAS_HEADER = (1 << 5);
 	int flags = 0;
 
 	for (size_t i = 0; i < str.size(); i++) {
@@ -701,9 +802,10 @@ void FormattedText::UseRegex(std::string& str)
 		if (str[i] == '_') flags |= HAS_EMPHAS;
 		if (str[i] == '>') flags |= HAS_QUOTE;
 		if (str[i] == '@') flags |= HAS_AT;
+		if (str[i] == '#') flags |= HAS_HEADER;
 		if (str[i] == '\\') flags |= HAS_BSLASH;
 
-		if (flags == (HAS_STRONG | HAS_EMPHAS | HAS_QUOTE | HAS_AT | HAS_BSLASH))
+		if (flags == (HAS_STRONG | HAS_EMPHAS | HAS_QUOTE | HAS_AT | HAS_BSLASH | HAS_HEADER))
 			break;
 	}
 
@@ -737,6 +839,16 @@ void FormattedText::UseRegex(std::string& str)
 
 			if ((i == 0 || str[i - 1] == '\n') && str[i] == '>' && str[i + 1] == ' ')
 				str[i] = CHAR_BEG_QUOTE, str[i + 1] = CHAR_NOOP;
+		}
+	}
+	if (flags & HAS_HEADER)
+	{
+		for (size_t i = 0; str.size() > 2 && i < str.size() - 2; i++) {
+
+			if ((i == 0 || str[i - 1] == '\n') && str[i] == '#' && str[i + 1] == ' ')
+				str[i] = CHAR_BEG_HEADER, str[i + 1] = CHAR_NOOP;
+			if ((i == 0 || str[i - 1] == '\n') && str[i] == '#' && str[i + 1] == '#' && i + 2 < str.size() && str[i + 2] == ' ')
+				str[i] = CHAR_BEG_HDR2, str[i + 1] = CHAR_NOOP, str[i + 2] = CHAR_NOOP;
 		}
 	}
 	if (flags & HAS_AT)
@@ -819,11 +931,34 @@ void FormattedText::TokenizeAll()
 		{
 			// even, so tokenize it all the way.
 			auto& vec = m_blocks[i];
-			for (size_t j = 0; j < vec.size(); j++) {
+			for (size_t j = 0; j < vec.size(); j++)
+			{
 				if (j & 1)
-					m_tokens.push_back(Token(Token::SMALLCODE, EscapeChars(m_blocks[i][j].first)));
+				{
+					// for each word
+					auto& str = m_blocks[i][j].first;
+
+					size_t last = 0, j;
+					for (j = 0; j <= str.size(); j++)
+					{
+						if (j == str.size() || str[j] == ' ')
+						{
+							// push it *including* the space
+							std::string toInsert;
+							if (j == str.size())
+								toInsert = str.substr(last);
+							else
+								toInsert = str.substr(last, j - last + 1);
+
+							m_tokens.push_back(Token(Token::SMALLCODE, EscapeChars(toInsert)));
+							last = j + 1;
+						}
+					}
+				}
 				else
+				{
 					Tokenize(m_blocks[i][j].first, m_blocks[i][j].second);
+				}
 			}
 		}
 	}
