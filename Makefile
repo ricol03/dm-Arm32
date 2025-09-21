@@ -1,51 +1,19 @@
 # User settings
-
-# Print debugging information and keep debugging symbols
 DEBUG ?= yes
-
-# Compile the Unicode version or the ANSI version
 UNICODE ?= yes
+MSYS_PATH ?= C:/MinGW/msys/1.0
+OPENSSL_INC_DIR ?= libs/include
+OPENSSL_LIB_DIR ?= libs/openssl-arm/
 
-# Define IS_MINGW_ON_WINDOWS=yes if you're compiling on Windows
-IS_MINGW_ON_WINDOWS ?= no
-
-# NOTE: These defaults only apply on iProgramInCpp's system!
-# You must specify something else on your end by either `export`-ing these
-# environment variables, or by specifying them in the `make` command line.
-ifeq ($(IS_MINGW_ON_WINDOWS),yes)
-	# OpenSSL install directory
-	OPENSSL_DIR ?= C:/DiscordMessenger/openssl
-	MSYS_PATH   ?= C:/MinGW/msys/1.0
-	
-	# Toolchain
-	DMCC  ?= gcc
-	DMCXX ?= g++
-	DMWR  ?= windres
-	MKDIR ?= $(MSYS_PATH)/bin/mkdir.exe
-	FIND  ?= $(MSYS_PATH)/bin/find.exe
-else
-	# OpenSSL install directory
-	OPENSSL_DIR ?= /mnt/c/DiscordMessenger/openssl
-	
-	# Toolchain
-	DMPREFIX ?= i686-w64-mingw32
-	DMCC  ?= $(DMPREFIX)-gcc
-	DMCXX ?= $(DMPREFIX)-g++
-	DMWR  ?= $(DMPREFIX)-windres
-	MKDIR ?= mkdir
-	FIND  ?= find
-	
-	# Extra flags if you need them
-	EXTRA_FLAGS=-static-libgcc -static-libstdc++ -Wl,--no-whole-archive
-endif
+CXX = (path to your toolchain)/bin/armv7-w64-mingw32-g++
 
 # Print info
 $(info Discord Messenger makefile)
 $(info Debug: $(DEBUG))
 $(info Unicode: $(UNICODE))
 
-USER_INC_DIRS ?=
-USER_DEFINES  ?=
+USER_INC_DIRS = 
+USER_DEFINES  =
 
 # WINVER definitions
 WINVER  ?= 0x0501
@@ -56,23 +24,13 @@ BUILD_DIR = build
 BIN_DIR = bin
 SRC_DIR = src
 
-OPENSSL_INC_DIR = $(OPENSSL_DIR)/include
-OPENSSL_LIB_DIR = $(OPENSSL_DIR)
-
 # Target executable
 TARGET = $(BIN_DIR)/DiscordMessenger.exe
 
 # Location of certain utilities.  Because Win32 takes over if you don't
-ifeq ($(USE_MINGW_FIND),yes)
-else
-	MKDIR ?= mkdir
-	FIND  ?= find
-endif
-
-SYSROOTD=
-ifdef SYSROOT
-	SYSROOTD = --sysroot=$(SYSROOT)
-endif
+MKDIR = mkdir
+FIND  = find
+WR = (path to your toolchain)/bin/armv7-w64-mingw32-windres
 
 INC_DIRS = \
 	$(USER_INC_DIRS) \
@@ -89,6 +47,7 @@ DEFINES = \
 	-DWINVER=$(WINVER)            \
 	-D_WIN32_WINNT=$(WINVER)      \
 	-D_WIN32_IE=$(WIN32IE)        \
+	-D__USE_W32_SOCKETS           \
 	-DASIO_STANDALONE             \
 	-DASIO_DISABLE_IOCP           \
 	-DASIO_HAS_THREADS            \
@@ -100,13 +59,8 @@ DEFINES = \
 	-DMINGW_SPECIFIC_HACKS        \
 	-DDISCORD_MESSENGER           \
 	-DUSE_IPROGS_REIMPL           \
-	-DASIO_DISABLE_WINDOWS_OBJECT_HANDLE \
-	$(USER_DEFINES)
-
-COMMIT_HASH ?= undefined
-ifneq ($(COMMIT_HASH),undefined)
-	DEFINES += -DGIT_COMMIT_HASH=$(COMMIT_HASH)
-endif
+	-DASIO_DISABLE_WINDOWS_OBJECT_HANDLE\
+	-DNOCRYPT
 
 #note: USE_IPROGS_REIMPL is defined so that iprogsthreads will use the mwas
 #version of certain APIs such as TryEnterCriticalSection
@@ -138,10 +92,6 @@ CXXFLAGS = \
 	$(DEFINES)     \
 	-MMD           \
 	-std=c++11     \
-	-mno-mmx       \
-	-mno-sse       \
-	-mno-sse2      \
-	-march=i586    \
 	$(UNICODE_DEF) \
 	$(DEBUG_DEF)
 
@@ -155,10 +105,9 @@ LDFLAGS = \
 	-lgdi32     \
 	-luser32    \
 	-lole32     \
-	-lcrypt32   \
 	-lcrypto    \
 	-lssl       \
-	$(EXTRA_FLAGS)
+	-static-libstdc++
 
 WRFLAGS = \
 	-Ihacks
@@ -187,15 +136,15 @@ clean:
 $(TARGET): $(OBJ)
 	@echo \>\> LINKING $@
 	@$(MKDIR) -p $(dir $@)
-	$(DMCXX) $(SYSROOTD) $(OBJ) $(LDFLAGS) -o $@
+	@$(CXX) $(OBJ) $(LDFLAGS) -o $@
 
 # NOTE: Using --use-temp-file seems to get rid of some weirdness with MinGW 6.3.0's windres?
 $(BUILD_DIR)/%.o: %.rc
 	@echo \>\> Compiling resource $<
 	@$(MKDIR) -p $(dir $@)
-	@$(DMWR) $(WRFLAGS) -i $< -o $@ --use-temp-file
+	@$(WR) $(WRFLAGS) -i $< -o $@ --use-temp-file
 
 $(BUILD_DIR)/%.o: %.cpp
 	@echo \>\> Compiling $<
 	@$(MKDIR) -p $(dir $@)
-	$(DMCXX) $(SYSROOTD) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@

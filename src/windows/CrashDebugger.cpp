@@ -360,7 +360,7 @@ LONG WINAPI DMUnhandledExceptionFilter(PEXCEPTION_POINTERS ExceptionInfo)
 		er->ExceptionInformation[1] < 0x10000)
 		something = " (https://www.youtube.com/watch?v=bLHL75H_VEM)";
 
-#ifdef _WIN64
+/*#ifdef _WIN64
 	AbortMessage(
 		"Oops! DiscordMessenger (x64) just crashed!\n\n"
 		"Thread ID: %u\n"
@@ -404,7 +404,7 @@ LONG WINAPI DMUnhandledExceptionFilter(PEXCEPTION_POINTERS ExceptionInfo)
 		cr->Eax, cr->Ebx, cr->Ecx, cr->Edx,
 		cr->Esi, cr->Edi, cr->Esp, cr->Ebp
 	);
-#endif
+#endif*/
 }
 
 LONG WINAPI DMVectoredExceptionHandler(PEXCEPTION_POINTERS ExceptionInfo)
