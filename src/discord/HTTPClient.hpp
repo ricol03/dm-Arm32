@@ -1,8 +1,10 @@
 #pragma once
 
 #include <string>
-#include <cstring>
 #include <vector>
+#include <cstring>
+#include <cstdint>
+#include "DiscordRequest.hpp"
 
 enum eHttpResponseCodes
 {
@@ -83,6 +85,14 @@ struct NetRequest
 
 	bool operator<(const NetRequest& other) const {
 		return Priority() < other.Priority();
+	}
+
+	bool IsMediaRequest() const {
+		return itype == DiscordRequest::IMAGE || itype == DiscordRequest::IMAGE_ATTACHMENT;
+	}
+
+	bool IsOk() const {
+		return result == HTTP_OK || result == HTTP_NOCONTENT;
 	}
 
 	// NOTE: NetRequest takes ownership of the bytes array we pass!

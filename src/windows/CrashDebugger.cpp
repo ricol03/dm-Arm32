@@ -221,9 +221,9 @@ NORETURN void AbortMessage(const char* message, ...)
 
 	// there's gotta be a better way ...
 #ifdef _DEBUG
-	const char* debugOrRelease = "debug";
+	const char* debugOrRelease = "Debug";
 #else
-	const char* debugOrRelease = "release";
+	const char* debugOrRelease = "Release";
 #endif
 
 #ifdef _WIN64
@@ -235,8 +235,8 @@ NORETURN void AbortMessage(const char* message, ...)
 	snprintf(
 		smallerBuffer,
 		sizeof smallerBuffer,
-		"\nDiscordMessenger Version %.2f %s %s %s %s\n\nHere is a stack trace:\n",
-		GetAppVersion(),
+		"\nDiscordMessenger %s %s %s %s %s\n\nHere is a stack trace:\n",
+		GetAppVersionString(),
 		UsedCompiler,
 		ActiveCharset,
 		debugOrRelease,
@@ -360,7 +360,32 @@ LONG WINAPI DMUnhandledExceptionFilter(PEXCEPTION_POINTERS ExceptionInfo)
 		er->ExceptionInformation[1] < 0x10000)
 		something = " (https://www.youtube.com/watch?v=bLHL75H_VEM)";
 
-	/*AbortMessage(
+/*#ifdef _WIN64
+	AbortMessage(
+		"Oops! DiscordMessenger (x64) just crashed!\n\n"
+		"Thread ID: %u\n"
+		"Exception Code: %08X\n"
+		"Exception Address: %p\n"
+		"Exception Parameters: %p %p%s\n"
+		"RIP=%p RFLAGS=%08X \n"
+		"RAX=%p RBX=%p RCX=%p RDX=%p\n"
+		"RSI=%p RDI=%p RSP=%p RBP=%p\n"
+		"R8 =%p R9 =%p R10=%p R11=%p\n"
+		"R12=%p R13=%p R14=%p R15=%p\n",
+		GetCurrentThreadId(),
+		er->ExceptionCode,
+		er->ExceptionAddress,
+		er->NumberParameters >= 1 ? er->ExceptionInformation[0] : 0,
+		er->NumberParameters >= 2 ? er->ExceptionInformation[1] : 0,
+		something,
+		cr->Rip, cr->EFlags,
+		cr->Rax, cr->Rbx, cr->Rcx, cr->Rdx,
+		cr->Rsi, cr->Rdi, cr->Rsp, cr->Rbp,
+		cr->R8,  cr->R9,  cr->R10, cr->R11,
+		cr->R12, cr->R13, cr->R14, cr->R15
+	);
+#else
+	AbortMessage(
 		"Oops! DiscordMessenger just crashed!\n\n"
 		"Thread ID: %u\n"
 		"Exception Code: %08X\n"
@@ -378,7 +403,9 @@ LONG WINAPI DMUnhandledExceptionFilter(PEXCEPTION_POINTERS ExceptionInfo)
 		cr->Eip, cr->EFlags,
 		cr->Eax, cr->Ebx, cr->Ecx, cr->Edx,
 		cr->Esi, cr->Edi, cr->Esp, cr->Ebp
-	);*/
+
+	);
+#endif*/
 }
 
 LONG WINAPI DMVectoredExceptionHandler(PEXCEPTION_POINTERS ExceptionInfo)

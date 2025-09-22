@@ -13,3 +13,4 @@ libs/lib
 .vs/
 *.user
 /vs/x64/*
+libs/

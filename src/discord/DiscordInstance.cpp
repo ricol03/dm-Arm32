@@ -478,6 +478,12 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 	unsigned long err_code;
 	char errStringBuffer[260]; // OpenSSL says buffer must be >256 bytes
 
+	if (pRequest->IsMediaRequest() && !pRequest->IsOk()) {
+		DbgPrintF("WARNING: Request for media from url %s failed with error %d. Message: %s", pRequest->url.c_str(), pRequest->result, pRequest->ErrorMessage().c_str());
+		GetFrontend()->OnAttachmentFailed(pRequest->itype == IMAGE, pRequest->additional_data);
+		return;
+	}
+
 	switch (pRequest->result)
 	{
 		case HTTP_UNAUTHORIZED:
@@ -556,7 +562,7 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 		{
 			DbgPrintF("Resource %s not loaded due to error %d", pRequest->url.c_str(), pRequest->result);
 
-			if (pRequest->itype == IMAGE || pRequest->itype == IMAGE_ATTACHMENT) {
+			if (pRequest->IsMediaRequest()) {
 				GetFrontend()->OnAttachmentFailed(pRequest->itype == IMAGE, pRequest->additional_data);
 				return;
 			}
@@ -651,6 +657,8 @@ void DiscordInstance::HandleRequest(NetRequest* pRequest)
 			case IMAGE:
 			case IMAGE_ATTACHMENT:
 			{
+				DbgPrintF("Attachment at url %s downloaded.", pRequest->url.c_str());
+
 				// Since the request is passed in as a string, this could do for getting the binary shit out of it
 				const uint8_t* pData = (const uint8_t*)pRequest->response.data();
 				const size_t nSize = pRequest->response.size();
@@ -1960,19 +1968,21 @@ bool DiscordInstance::SortGuilds()
 			m_guildItemList.AddFolder(guild.first, folderNames[guild.first]);
 		}
 
+		// Set the guild added flag to true even if we aren't adding it, because
+		// I don't feel like adding a redundant check below
+		guildAdded[guild.second] = true;
+
 		// Fetch info about the actual guild.
 		Guild* gld = GetGuild(guild.second);
 		std::string name, avatar;
 		if (!gld) {
 			DbgPrintF("Guild %lld in guild folders doesn't actually exist", guild.second);
-			name = "Unknown guild";
-		}
-		else {
-			name = gld->m_name;
-			avatar = gld->m_avatarlnk;
+			continue;
 		}
 
-		guildAdded[guild.second] = true;
+		name = gld->m_name;
+		avatar = gld->m_avatarlnk;
+
 		m_guildItemList.AddGuild(guild.first, guild.second, name, avatar);
 	}
 
@@ -2157,9 +2167,9 @@ void DiscordInstance::HandleREADY_SUPPLEMENTAL(Json& j)
 			}
 
 			// Look for any activities -- TODO: Server specific activities
-			if (guildPres.contains("game") && !guildPres["game"].is_null())
-				pf->m_status = GetStatusStringFromGameJsonObject(guildPres["game"]);
-			else if (guildPres.contains("activities") && !memPres["activities"].is_null())
+			if (memPres.contains("game") && !memPres["game"].is_null())
+				pf->m_status = GetStatusStringFromGameJsonObject(memPres["game"]);
+			else if (memPres.contains("activities") && !memPres["activities"].is_null())
 				pf->m_status = GetStatusFromActivities(memPres["activities"]);
 			else
 				pf->m_status = "";
@@ -2498,7 +2508,14 @@ void DiscordInstance::HandleUSER_SETTINGS_PROTO_UPDATE(Json& j)
 void DiscordInstance::HandleGUILD_CREATE(Json& j)
 {
 	Json& data = j["d"];
+	Snowflake guildID = GetSnowflake(data, "id");
 	ParseAndAddGuild(data);
+
+	Guild* guild = GetGuild(guildID);
+	if (guild)
+	{
+		m_guildItemList.AddGuild(0, guildID, guild->m_name, guild->m_avatarlnk);
+	}
 
 	GetFrontend()->RepaintGuildList();
 }
@@ -2515,6 +2532,7 @@ void DiscordInstance::HandleGUILD_DELETE(Json& j)
 		if (iter->m_snowflake == sf)
 		{
 			m_guilds.erase(iter);
+			m_guildItemList.EraseGuild(sf);
 			GetFrontend()->RepaintGuildList();
 
 			if (m_CurrentGuild == sf)
@@ -2938,7 +2956,11 @@ void DiscordInstance::HandleGuildMemberListUpdate_Update(Snowflake guild, nlohma
 		return;
 	}
 
-	pGld->m_members[index] = ParseGuildMemberOrGroup(guild, j["item"]);
+	Snowflake sf = ParseGuildMemberOrGroup(guild, j["item"]);
+	pGld->m_members[index] = sf;
+
+	std::set<Snowflake> updates{ sf };
+	GetFrontend()->RefreshMembers(updates);
 }
 
 void DiscordInstance::OnUploadAttachmentFirst(NetRequest* pReq)
@@ -3055,7 +3077,8 @@ bool DiscordInstance::SendMessageAndAttachmentToCurrentChannel(
 	Snowflake& tempSf,
 	uint8_t* attData,
 	size_t attSize,
-	const std::string& attName)
+	const std::string& attName,
+	bool isSpoiler)
 {
 	if (!GetCurrentChannel() || !GetCurrentGuild())
 		return false;
@@ -3068,8 +3091,10 @@ bool DiscordInstance::SendMessageAndAttachmentToCurrentChannel(
 	if (!pChan->HasPermission(PERM_SEND_MESSAGES) || !pChan->HasPermission(PERM_ATTACH_FILES))
 		return false;
 	
+	std::string newAttName = (isSpoiler ? "SPOILER_" : "") + attName;
+
 	Json file;
-	file["filename"]  = attName;
+	file["filename"]  = newAttName;
 	file["file_size"] = int(attSize);
 	file["is_clip"]   = false;
 	file["id"]        = std::to_string(m_nextAttachmentID);
@@ -3080,7 +3105,7 @@ bool DiscordInstance::SendMessageAndAttachmentToCurrentChannel(
 	Json j;
 	j["files"] = files;
 
-	m_pendingUploads[m_nextAttachmentID] = PendingUpload(attName, attData, attSize, msg, tempSf, m_CurrentChannel);
+	m_pendingUploads[m_nextAttachmentID] = PendingUpload(newAttName, attData, attSize, msg, tempSf, m_CurrentChannel);
 
 	GetHTTPClient()->PerformRequest(
 		true,
@@ -3090,7 +3115,7 @@ bool DiscordInstance::SendMessageAndAttachmentToCurrentChannel(
 		m_nextAttachmentID,
 		j.dump(),
 		m_token,
-		attName,
+		newAttName,
 		nullptr // default processing
 	);
 

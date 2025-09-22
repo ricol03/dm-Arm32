@@ -2,7 +2,7 @@
 DEBUG ?= yes
 UNICODE ?= yes
 MSYS_PATH ?= C:/MinGW/msys/1.0
-OPENSSL_INC_DIR ?= libs/openssl-arm/include
+OPENSSL_INC_DIR ?= libs/include
 OPENSSL_LIB_DIR ?= libs/openssl-arm/
 
 CXX = (path to your toolchain)/bin/armv7-w64-mingw32-g++
@@ -12,7 +12,7 @@ $(info Discord Messenger makefile)
 $(info Debug: $(DEBUG))
 $(info Unicode: $(UNICODE))
 
-USER_INC_DIRS =
+USER_INC_DIRS = 
 USER_DEFINES  =
 
 # WINVER definitions
@@ -59,7 +59,8 @@ DEFINES = \
 	-DMINGW_SPECIFIC_HACKS        \
 	-DDISCORD_MESSENGER           \
 	-DUSE_IPROGS_REIMPL           \
-	-DASIO_DISABLE_WINDOWS_OBJECT_HANDLE
+	-DASIO_DISABLE_WINDOWS_OBJECT_HANDLE\
+	-DNOCRYPT
 
 #note: USE_IPROGS_REIMPL is defined so that iprogsthreads will use the mwas
 #version of certain APIs such as TryEnterCriticalSection
@@ -104,7 +105,6 @@ LDFLAGS = \
 	-lgdi32     \
 	-luser32    \
 	-lole32     \
-	-lcrypt32   \
 	-lcrypto    \
 	-lssl       \
 	-static-libstdc++
