@@ -403,6 +403,7 @@ LONG WINAPI DMUnhandledExceptionFilter(PEXCEPTION_POINTERS ExceptionInfo)
 		cr->Eip, cr->EFlags,
 		cr->Eax, cr->Ebx, cr->Ecx, cr->Edx,
 		cr->Esi, cr->Edi, cr->Esp, cr->Ebp
+
 	);
 #endif*/
 }
