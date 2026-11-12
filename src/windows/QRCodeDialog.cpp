@@ -4,7 +4,7 @@
 #include <boost/base64/base64.hpp>
 #include "QRCodeDialog.hpp"
 #include "Main.hpp"
-#include "../discord/WebsocketClient.hpp"
+#include "network/WebsocketClient.hpp"
 
 // NOTE - This is unused, probably won't be finished
 
@@ -195,11 +195,13 @@ void QRCodeDialog::OnDestroy()
 
 void QRCodeDialog::CreateRSAKey()
 {
+	/*
 	if (RAND_status() == 0) {
 		DbgPrintW("QRCodeDialog: OpenSSL random is not seeded!!");
 		assert(!"OpenSSL rand is not seeded!");
 		return;
 	}
+	*/
 
 	EVP_PKEY* pkey = nullptr;
 	BUF_MEM* bptr = NULL;
