@@ -5,7 +5,7 @@ MSYS_PATH ?= C:/MinGW/msys/1.0
 OPENSSL_INC_DIR ?= libs/include
 OPENSSL_LIB_DIR ?= libs/openssl-arm/
 
-CXX = (path to your toolchain)/bin/armv7-w64-mingw32-g++
+CXX = (toolchain path)/bin/armv7-w64-mingw32-g++
 
 # Print info
 $(info Discord Messenger makefile)
@@ -30,18 +30,22 @@ TARGET = $(BIN_DIR)/DiscordMessenger.exe
 # Location of certain utilities.  Because Win32 takes over if you don't
 MKDIR = mkdir
 FIND  = find
-WR = (path to your toolchain)/bin/armv7-w64-mingw32-windres
+WR = (toolchain path)/bin/armv7-w64-mingw32-windres
 
 INC_DIRS = \
 	$(USER_INC_DIRS) \
 	-I$(OPENSSL_INC_DIR)         \
+	-Isrc \
+	-Isrc/core \
 	-Ideps                       \
 	-Ideps/asio                  \
+	-Ideps/webp \
 	-Ideps/iprogsthreads/include \
 	-Ideps/mwas/include
 
 LIB_DIRS = \
-	-L$(OPENSSL_LIB_DIR)
+	-L$(OPENSSL_LIB_DIR) \
+	-L$(LIBWEBP_DIR)
 
 DEFINES = \
 	-DWINVER=$(WINVER)            \
@@ -58,7 +62,6 @@ DEFINES = \
 	-D_WEBSOCKETPP_IPROGS_THREAD_ \
 	-DMINGW_SPECIFIC_HACKS        \
 	-DDISCORD_MESSENGER           \
-	-DUSE_IPROGS_REIMPL           \
 	-DASIO_DISABLE_WINDOWS_OBJECT_HANDLE\
 	-DNOCRYPT
 
@@ -107,6 +110,7 @@ LDFLAGS = \
 	-lole32     \
 	-lcrypto    \
 	-lssl       \
+	-lwebp      \
 	-static-libstdc++
 
 WRFLAGS = \

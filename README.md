@@ -44,7 +44,7 @@ Special thanks to Brunintech for the testing and screenshot!
 
 ## Building
 
-I won't be explaining how you can build it necessarily, I ended up doing it on Linux with LLVM-MinGW. You can get the toolchain here: https://github.com/mstorsjo/llvm-mingw. Otherwise, change the Makefile as needed, and, theoretically, you should be good to go (run the `make` command).
+I won't be explaining how you can build it necessarily, I ended up doing it on Linux with LLVM-MinGW. You can get the toolchain here: https://github.com/mstorsjo/llvm-mingw. Otherwise, change the Makefile as needed, and, theoretically, you should be good to go (run the `make` command); make sure to add the path for LIBWEBP_DIR - should contain arm32 versions of libwebp.a, etc. - after the make command e.g. `make LIBWEBP_DIR=(your path)`.
 
 Here follows the original build process:
 

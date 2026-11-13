@@ -243,7 +243,7 @@ void CopyStringToClipboard(const std::string& str)
 
 void CopyImageToClipboard(HBITMAP hBitmap)
 {
-	HBITMAP bitmapCopy = (HBITMAP)ri::CopyImage(hBitmap, IMAGE_BITMAP, 0, 0, 0);
+	HBITMAP bitmapCopy = (HBITMAP)CopyImage(hBitmap, IMAGE_BITMAP, 0, 0, 0);
 	if (!bitmapCopy)
 		return;
 
